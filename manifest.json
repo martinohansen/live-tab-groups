@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Live Tab Groups",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Automatically creates and maintains tab groups from dynamic sources (GitHub PRs, and more).",
   "permissions": ["storage", "alarms", "tabs", "tabGroups"],
   "host_permissions": ["https://api.github.com/*", "https://github.com/*"],
