@@ -1,0 +1,201 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Live Tab Groups – Options</title>
+  <style>
+    body {
+      font: 14px system-ui;
+      margin: 24px;
+      max-width: 800px;
+    }
+    h1 {
+      margin-bottom: 8px;
+    }
+    .subtitle {
+      color: #666;
+      margin-bottom: 24px;
+    }
+    label {
+      display: block;
+      margin-bottom: 8px;
+    }
+    input[type="text"],
+    input[type="password"] {
+      width: 100%;
+      padding: 6px;
+      box-sizing: border-box;
+      margin-top: 4px;
+    }
+    input[type="number"] {
+      width: 4em;
+      padding: 4px;
+    }
+    select {
+      padding: 4px;
+      margin-left: 8px;
+    }
+    button {
+      padding: 8px 16px;
+      margin-top: 16px;
+      font-size: 14px;
+      cursor: pointer;
+    }
+    .section {
+      margin-bottom: 20px;
+    }
+    .group-card {
+      border: 1px solid #ddd;
+      border-radius: 8px;
+      padding: 20px;
+      margin-bottom: 20px;
+      background: #f9f9f9;
+    }
+    .group-card.disabled {
+      opacity: 0.6;
+    }
+    .group-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 16px;
+    }
+    .group-title {
+      font-size: 18px;
+      font-weight: bold;
+    }
+    .group-description {
+      color: #666;
+      font-size: 13px;
+      margin-bottom: 16px;
+    }
+    code {
+      background: #f0f0f0;
+      padding: 2px 4px;
+      border-radius: 3px;
+    }
+    .status-ok {
+      color: #28a745;
+      font-weight: bold;
+    }
+    .status-error {
+      color: #d73a49;
+      font-weight: bold;
+    }
+    .toggle-switch {
+      position: relative;
+      display: inline-block;
+      width: 50px;
+      height: 24px;
+    }
+    .toggle-switch input {
+      opacity: 0;
+      width: 0;
+      height: 0;
+    }
+    .slider {
+      position: absolute;
+      cursor: pointer;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background-color: #ccc;
+      transition: .4s;
+      border-radius: 24px;
+    }
+    .slider:before {
+      position: absolute;
+      content: "";
+      height: 18px;
+      width: 18px;
+      left: 3px;
+      bottom: 3px;
+      background-color: white;
+      transition: .4s;
+      border-radius: 50%;
+    }
+    input:checked + .slider {
+      background-color: #2196F3;
+    }
+    input:checked + .slider:before {
+      transform: translateX(26px);
+    }
+  </style>
+</head>
+<body>
+  <h1>Live Tab Groups</h1>
+  <p class="subtitle">Automatically manage tab groups from dynamic sources</p>
+
+  <!-- GitHub PRs Group -->
+  <div class="group-card" id="github-prs-card">
+    <div class="group-header">
+      <div class="group-title">GitHub Pull Requests</div>
+      <label class="toggle-switch">
+        <input type="checkbox" id="github-prs-enabled" checked>
+        <span class="slider"></span>
+      </label>
+    </div>
+    <div class="group-description">Syncs your GitHub PRs into a tab group</div>
+
+    <div class="section">
+      <label>
+        GitHub Personal Access Token (with <code>repo</code> scope):
+        <input id="github-prs-token" type="password" placeholder="ghp_...">
+      </label>
+      <small>Create a token at <a href="https://github.com/settings/tokens" target="_blank">github.com/settings/tokens</a></small>
+    </div>
+
+    <div class="section">
+      <label>
+        Search Queries (GitHub search syntax; <code>@me</code> becomes your login):
+        <textarea id="github-prs-queries" rows="5" style="width: 100%; padding: 6px; box-sizing: border-box; margin-top: 4px; font-family: monospace; font-size: 13px;"></textarea>
+      </label>
+      <small>One query per line. Results from all queries are combined.</small>
+    </div>
+
+    <div class="section">
+      <label>
+        Group Title:
+        <input id="github-prs-groupTitle" type="text" placeholder="GitHub PRs">
+      </label>
+    </div>
+
+    <div class="section">
+      <label>
+        Group Color:
+        <select id="github-prs-groupColor">
+          <option value="blue">Blue</option>
+          <option value="red">Red</option>
+          <option value="green">Green</option>
+          <option value="yellow">Yellow</option>
+          <option value="purple">Purple</option>
+          <option value="cyan">Cyan</option>
+          <option value="grey">Grey</option>
+        </select>
+      </label>
+    </div>
+
+    <div class="section">
+      <label>
+        Poll every <input id="github-prs-pollMinutes" type="number" min="1" value="5"> minutes
+      </label>
+    </div>
+
+    <div class="section">
+      <label>
+        <input id="github-prs-closeMissing" type="checkbox">
+        Close tabs when PRs are no longer open
+      </label>
+    </div>
+  </div>
+
+  <button id="save">Save Settings</button>
+  <button id="syncNow" style="margin-left: 10px;">Sync Now</button>
+
+  <div id="syncStatus" style="margin-top: 16px; padding: 10px; border-radius: 4px; display: none;"></div>
+
+  <script src="providers/github-prs.js"></script>
+  <script src="options.js"></script>
+</body>
+</html>

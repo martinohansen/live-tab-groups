@@ -1,0 +1,20 @@
+{
+  "manifest_version": 3,
+  "name": "Live Tab Groups",
+  "version": "0.1.0",
+  "description": "Automatically creates and maintains tab groups from dynamic sources (GitHub PRs, and more).",
+  "permissions": ["storage", "alarms", "tabs", "tabGroups"],
+  "host_permissions": ["https://api.github.com/*", "https://github.com/*"],
+  "background": { "scripts": ["providers/github-prs.js", "background.js"] },
+  "options_ui": { "page": "options.html", "open_in_tab": true },
+  "action": { "default_title": "Live Tab Groups" },
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "@live-tab-groups.martinohansen",
+      "strict_min_version": "139.0",
+      "data_collection_permissions": {
+        "required": ["none"]
+      }
+    }
+  }
+}
