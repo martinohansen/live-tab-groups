@@ -2,3 +2,5 @@ web-ext-artifacts/
 node_modules/
 *.zip
 .DS_Store
+
+CLAUDE.md

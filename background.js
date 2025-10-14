@@ -55,8 +55,8 @@ async function findGroupByTitle(title, windowId) {
   return match || null;
 }
 
-// Ensure a tab group exists (creates empty group if needed)
-async function ensureGroup(windowId, title, color) {
+// Find or return null if group doesn't exist
+async function findOrCreateGroup(windowId, title, color) {
   // If group exists, update and return it
   const existing = await findGroupByTitle(title, windowId);
   if (existing) {
@@ -64,13 +64,8 @@ async function ensureGroup(windowId, title, color) {
     return existing.id;
   }
 
-  // Create new empty group by creating a temp tab, grouping it, then removing it
-  const tempTab = await browser.tabs.create({ url: "about:blank", active: false, windowId });
-  const groupId = await browser.tabs.group({ tabIds: [tempTab.id], createProperties: { windowId } });
-  await browser.tabGroups.update(groupId, { title, color });
-  await browser.tabs.remove(tempTab.id);
-
-  return groupId;
+  // Return null - group will be created when first tab is added
+  return null;
 }
 
 // Find tabs matching specific URLs
@@ -102,8 +97,8 @@ async function syncGroup(providerId, config, windowId) {
   if (!config.enabled) return;
 
   try {
-    // Ensure group exists first (creates empty group if needed)
-    const groupId = await ensureGroup(windowId, config.groupTitle, config.groupColor);
+    // Check if group exists (returns null if not)
+    let groupId = await findOrCreateGroup(windowId, config.groupTitle, config.groupColor);
 
     // Fetch URLs from provider
     const urls = await provider.fetchUrls(config);
@@ -115,24 +110,31 @@ async function syncGroup(providerId, config, windowId) {
       if (!existingMap.has(u)) need.push(u);
     }
 
-    // Create new tabs directly in the group
+    // Collect all tabs that should be in the group
+    const allTabIds = Array.from(existingMap.values()).map(t => t.id);
+
+    // Create new tabs
     const created = [];
     for (const u of need) {
       const t = await browser.tabs.create({ url: u, active: false, windowId });
       created.push(t);
       existingMap.set(u, t);
-      // Immediately add to group
-      await browser.tabs.group({ groupId, tabIds: [t.id] });
+      allTabIds.push(t.id);
     }
 
-    // Add any existing tabs that aren't in the group yet
-    const allTabIds = Array.from(existingMap.values()).map(t => t.id);
-    const tabsInExistingGroup = await tabsInGroup(groupId);
-    const alreadyInGroup = new Set(tabsInExistingGroup.map(t => t.id));
-    const tabsToAdd = allTabIds.filter(id => !alreadyInGroup.has(id));
+    // If no group exists and we have tabs, create the group with all tabs at once
+    if (groupId === null && allTabIds.length > 0) {
+      groupId = await browser.tabs.group({ tabIds: allTabIds, createProperties: { windowId } });
+      await browser.tabGroups.update(groupId, { title: config.groupTitle, color: config.groupColor });
+    } else if (groupId !== null && allTabIds.length > 0) {
+      // Group exists - add tabs that aren't already in it
+      const tabsInExistingGroup = await tabsInGroup(groupId);
+      const alreadyInGroup = new Set(tabsInExistingGroup.map(t => t.id));
+      const tabsToAdd = allTabIds.filter(id => !alreadyInGroup.has(id));
 
-    if (tabsToAdd.length) {
-      await browser.tabs.group({ groupId, tabIds: tabsToAdd });
+      if (tabsToAdd.length) {
+        await browser.tabs.group({ groupId, tabIds: tabsToAdd });
+      }
     }
 
     // Prune tabs not in list
