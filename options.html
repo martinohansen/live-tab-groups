@@ -2,198 +2,304 @@
 <html>
 <head>
   <meta charset="utf-8">
-  <title>Live Tab Groups – Options</title>
+  <title>Live Tab Groups</title>
   <style>
-    body {
-      font: 14px system-ui;
-      margin: 24px;
-      max-width: 800px;
-    }
-    h1 {
-      margin-bottom: 8px;
-    }
-    .subtitle {
-      color: #666;
-      margin-bottom: 24px;
-    }
-    label {
-      display: block;
-      margin-bottom: 8px;
-    }
-    input[type="text"],
-    input[type="password"] {
-      width: 100%;
-      padding: 6px;
+    * {
       box-sizing: border-box;
+    }
+
+    body {
+      font: message-box;
+      font-size: 13.33px;
+      margin: 0;
+      padding: 20px;
+      background: #fff;
+    }
+
+    .preference-row {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 20px;
+      align-items: start;
+      margin-bottom: 24px;
+      min-height: 32px;
+    }
+
+    .preference-label {
+      padding-top: 6px;
+    }
+
+    .preference-label-text {
+      display: block;
+      margin-bottom: 4px;
+      font-weight: 400;
+    }
+
+    .preference-description {
+      display: block;
+      color: #737373;
+      font-size: 12.5px;
+      line-height: 1.4;
       margin-top: 4px;
     }
-    input[type="number"] {
-      width: 4em;
-      padding: 4px;
-    }
-    select {
-      padding: 4px;
-      margin-left: 8px;
-    }
-    button {
-      padding: 8px 16px;
-      margin-top: 16px;
-      font-size: 14px;
-      cursor: pointer;
-    }
-    .section {
-      margin-bottom: 20px;
-    }
-    .group-card {
-      border: 1px solid #ddd;
-      border-radius: 8px;
-      padding: 20px;
-      margin-bottom: 20px;
-      background: #f9f9f9;
-    }
-    .group-card.disabled {
-      opacity: 0.6;
-    }
-    .group-header {
+
+    .preference-control {
       display: flex;
-      justify-content: space-between;
       align-items: center;
-      margin-bottom: 16px;
+      gap: 8px;
     }
-    .group-title {
-      font-size: 18px;
-      font-weight: bold;
+
+    input[type="text"],
+    input[type="password"],
+    textarea {
+      font: message-box;
+      font-size: 13.33px;
+      padding: 4px 8px;
+      border: 1px solid #8f8f9d;
+      border-radius: 4px;
+      background: #fff;
+      min-width: 200px;
     }
-    .group-description {
-      color: #666;
-      font-size: 13px;
-      margin-bottom: 16px;
+
+    input[type="text"]:focus,
+    input[type="password"]:focus,
+    textarea:focus {
+      outline: 2px solid #0060df;
+      outline-offset: 0;
+      border-color: transparent;
     }
-    code {
-      background: #f0f0f0;
-      padding: 2px 4px;
-      border-radius: 3px;
+
+    input[type="number"] {
+      font: message-box;
+      font-size: 13.33px;
+      padding: 4px 8px;
+      border: 1px solid #8f8f9d;
+      border-radius: 4px;
+      width: 80px;
+      text-align: right;
     }
-    .status-ok {
-      color: #28a745;
-      font-weight: bold;
+
+    input[type="number"]:focus {
+      outline: 2px solid #0060df;
+      outline-offset: 0;
+      border-color: transparent;
     }
-    .status-error {
-      color: #d73a49;
-      font-weight: bold;
+
+    textarea {
+      font-family: monospace;
+      font-size: 12px;
+      min-width: 400px;
+      resize: vertical;
     }
-    .toggle-switch {
-      position: relative;
-      display: inline-block;
-      width: 50px;
-      height: 24px;
+
+    select {
+      font: message-box;
+      font-size: 13.33px;
+      padding: 4px 28px 4px 8px;
+      border: 1px solid #8f8f9d;
+      border-radius: 4px;
+      background: #fff;
+      appearance: none;
+      background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 12 12"><path fill="%23737373" d="M6 9L1.5 4.5h9z"/></svg>');
+      background-repeat: no-repeat;
+      background-position: right 8px center;
+      min-width: 150px;
     }
-    .toggle-switch input {
-      opacity: 0;
-      width: 0;
-      height: 0;
+
+    select:focus {
+      outline: 2px solid #0060df;
+      outline-offset: 0;
+      border-color: transparent;
     }
-    .slider {
-      position: absolute;
+
+    input[type="checkbox"] {
+      width: 16px;
+      height: 16px;
+      margin: 0;
       cursor: pointer;
-      top: 0;
-      left: 0;
-      right: 0;
-      bottom: 0;
-      background-color: #ccc;
-      transition: .4s;
-      border-radius: 24px;
     }
-    .slider:before {
-      position: absolute;
-      content: "";
-      height: 18px;
-      width: 18px;
-      left: 3px;
-      bottom: 3px;
-      background-color: white;
-      transition: .4s;
-      border-radius: 50%;
+
+    button {
+      font: message-box;
+      font-size: 13.33px;
+      padding: 6px 16px;
+      background: #0060df;
+      color: #fff;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      min-height: 32px;
     }
-    input:checked + .slider {
-      background-color: #2196F3;
+
+    button:hover {
+      background: #003eaa;
     }
-    input:checked + .slider:before {
-      transform: translateX(26px);
+
+    button:active {
+      background: #002275;
+    }
+
+    button:disabled {
+      background: #8f8f9d;
+      cursor: not-allowed;
+    }
+
+    button.secondary {
+      background: #f0f0f4;
+      color: #15141a;
+    }
+
+    button.secondary:hover {
+      background: #e0e0e6;
+    }
+
+    button.secondary:active {
+      background: #cfcfd8;
+    }
+
+    .section-header {
+      font-size: 15px;
+      font-weight: 600;
+      margin: 32px 0 16px 0;
+      padding-bottom: 8px;
+      border-bottom: 1px solid #d7d7db;
+    }
+
+    .section-header:first-child {
+      margin-top: 0;
+    }
+
+    .button-row {
+      display: flex;
+      gap: 10px;
+      margin-top: 32px;
+      padding-top: 16px;
+      border-top: 1px solid #d7d7db;
+    }
+
+    .status-message {
+      display: none;
+      padding: 10px 12px;
+      border-radius: 4px;
+      margin-top: 12px;
+      font-size: 13px;
+    }
+
+    .status-message.success {
+      background: #e3f9e3;
+      color: #0c6e0c;
+      border: 1px solid #b1e3b1;
+    }
+
+    .status-message.error {
+      background: #ffe8e8;
+      color: #c50042;
+      border: 1px solid #ffb3b3;
+    }
+
+    code {
+      font-family: monospace;
+      font-size: 12px;
+      background: #f0f0f4;
+      padding: 2px 4px;
+      border-radius: 2px;
+    }
+
+    a {
+      color: #0060df;
+      text-decoration: none;
+    }
+
+    a:hover {
+      text-decoration: underline;
     }
   </style>
 </head>
 <body>
-  <h1>Live Tab Groups</h1>
-  <p class="subtitle">Automatically manage tab groups from dynamic sources</p>
+  <div class="section-header">GitHub Pull Requests</div>
 
-  <!-- GitHub PRs Group -->
-  <div class="group-card" id="github-prs-card">
-    <div class="group-header">
-      <div class="group-title">GitHub Pull Requests</div>
-      <label class="toggle-switch">
-        <input type="checkbox" id="github-prs-enabled" checked>
-        <span class="slider"></span>
-      </label>
+  <div class="preference-row">
+    <div class="preference-label">
+      <span class="preference-label-text">Enable GitHub PRs sync</span>
+      <span class="preference-description">Automatically sync your GitHub pull requests into a tab group</span>
     </div>
-    <div class="group-description">Syncs your GitHub PRs into a tab group</div>
-
-    <div class="section">
-      <label>
-        GitHub Personal Access Token (with <code>repo</code> scope):
-        <input id="github-prs-token" type="password" placeholder="ghp_...">
-      </label>
-      <small>Create a token at <a href="https://github.com/settings/tokens" target="_blank">github.com/settings/tokens</a></small>
-    </div>
-
-    <div class="section">
-      <label>
-        Search Queries (GitHub search syntax; <code>@me</code> becomes your login):
-        <textarea id="github-prs-queries" rows="5" style="width: 100%; padding: 6px; box-sizing: border-box; margin-top: 4px; font-family: monospace; font-size: 13px;"></textarea>
-      </label>
-      <small>One query per line. Results from all queries are combined.</small>
-    </div>
-
-    <div class="section">
-      <label>
-        Group Title:
-        <input id="github-prs-groupTitle" type="text" placeholder="GitHub PRs">
-      </label>
-    </div>
-
-    <div class="section">
-      <label>
-        Group Color:
-        <select id="github-prs-groupColor">
-          <option value="blue">Blue</option>
-          <option value="red">Red</option>
-          <option value="green">Green</option>
-          <option value="yellow">Yellow</option>
-          <option value="purple">Purple</option>
-          <option value="cyan">Cyan</option>
-          <option value="grey">Grey</option>
-        </select>
-      </label>
-    </div>
-
-    <div class="section">
-      <label>
-        Poll every <input id="github-prs-pollMinutes" type="number" min="1" value="5"> minutes
-      </label>
-    </div>
-
-    <div class="section">
-      <label>
-        <input id="github-prs-closeMissing" type="checkbox">
-        Close tabs when PRs are no longer open
-      </label>
+    <div class="preference-control">
+      <input type="checkbox" id="github-prs-enabled" checked>
     </div>
   </div>
 
-  <button id="save">Save Settings</button>
-  <button id="syncNow" style="margin-left: 10px;">Sync Now</button>
+  <div class="preference-row">
+    <div class="preference-label">
+      <span class="preference-label-text">GitHub Personal Access Token</span>
+      <span class="preference-description">Token with <code>repo</code> scope. Create at <a href="https://github.com/settings/tokens" target="_blank">github.com/settings/tokens</a></span>
+    </div>
+    <div class="preference-control">
+      <input type="password" id="github-prs-token" placeholder="ghp_...">
+    </div>
+  </div>
 
-  <div id="syncStatus" style="margin-top: 16px; padding: 10px; border-radius: 4px; display: none;"></div>
+  <div class="preference-row">
+    <div class="preference-label">
+      <span class="preference-label-text">Search queries</span>
+      <span class="preference-description">One query per line. Results from all queries are combined. Use <code>@me</code> as a placeholder for your username</span>
+    </div>
+    <div class="preference-control">
+      <textarea id="github-prs-queries" rows="5"></textarea>
+    </div>
+  </div>
+
+  <div class="preference-row">
+    <div class="preference-label">
+      <span class="preference-label-text">Group title</span>
+      <span class="preference-description">Title displayed on the tab group</span>
+    </div>
+    <div class="preference-control">
+      <input type="text" id="github-prs-groupTitle" placeholder="GitHub PRs">
+    </div>
+  </div>
+
+  <div class="preference-row">
+    <div class="preference-label">
+      <span class="preference-label-text">Group color</span>
+    </div>
+    <div class="preference-control">
+      <select id="github-prs-groupColor">
+        <option value="blue">Blue</option>
+        <option value="red">Red</option>
+        <option value="green">Green</option>
+        <option value="yellow">Yellow</option>
+        <option value="purple">Purple</option>
+        <option value="cyan">Cyan</option>
+        <option value="grey">Grey</option>
+      </select>
+    </div>
+  </div>
+
+  <div class="preference-row">
+    <div class="preference-label">
+      <span class="preference-label-text">Poll interval (minutes)</span>
+      <span class="preference-description">How often to check for new pull requests</span>
+    </div>
+    <div class="preference-control">
+      <input type="number" id="github-prs-pollMinutes" min="1" value="5">
+    </div>
+  </div>
+
+  <div class="preference-row">
+    <div class="preference-label">
+      <span class="preference-label-text">Auto-close tabs</span>
+      <span class="preference-description">Close tabs when PRs are no longer in your queries (merged, closed, etc.)</span>
+    </div>
+    <div class="preference-control">
+      <input type="checkbox" id="github-prs-closeMissing">
+    </div>
+  </div>
+
+  <div class="button-row">
+    <button id="syncNow">Sync Now</button>
+  </div>
+
+  <div id="syncStatus" class="status-message"></div>
 
   <script src="providers/github-prs.js"></script>
   <script src="options.js"></script>

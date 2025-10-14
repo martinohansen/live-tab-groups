@@ -42,18 +42,6 @@ async function loadOptions() {
   document.getElementById("github-prs-groupColor").value = githubConfig.groupColor || "blue";
   document.getElementById("github-prs-pollMinutes").value = githubConfig.pollMinutes || 5;
   document.getElementById("github-prs-closeMissing").checked = githubConfig.closeMissing !== false;
-
-  // Handle enable/disable UI
-  updateGroupCardState("github-prs", githubConfig.enabled !== false);
-}
-
-function updateGroupCardState(providerId, enabled) {
-  const card = document.getElementById(`${providerId}-card`);
-  if (enabled) {
-    card.classList.remove("disabled");
-  } else {
-    card.classList.add("disabled");
-  }
 }
 
 async function saveOptions() {
@@ -87,22 +75,18 @@ async function saveOptions() {
       await browser.alarms.create(`sync-${providerId}`, { periodInMinutes: config.pollMinutes });
     }
   }
-
-  showSyncStatus("Settings saved successfully!");
 }
 
-function showSyncStatus(message, isError = false) {
+function showStatus(message, isError = false) {
   const statusEl = document.getElementById("syncStatus");
   statusEl.textContent = message;
+  statusEl.className = "status-message " + (isError ? "error" : "success");
   statusEl.style.display = "block";
-  statusEl.style.backgroundColor = isError ? "#fee" : "#efe";
-  statusEl.style.border = isError ? "1px solid #d73a49" : "1px solid #28a745";
-  statusEl.style.color = isError ? "#d73a49" : "#28a745";
 
-  // Auto-hide after 5 seconds
+  // Auto-hide after 3 seconds
   setTimeout(() => {
     statusEl.style.display = "none";
-  }, 5000);
+  }, 3000);
 }
 
 async function syncNow() {
@@ -113,9 +97,9 @@ async function syncNow() {
   try {
     // Send message to background script to trigger sync
     await browser.runtime.sendMessage({ action: "syncNow" });
-    showSyncStatus("Sync completed successfully!");
+    showStatus("Sync completed successfully!");
   } catch (error) {
-    showSyncStatus(`Sync failed: ${error.message}`, true);
+    showStatus(`Sync failed: ${error.message}`, true);
     console.error("Sync error:", error);
   } finally {
     button.disabled = false;
@@ -127,11 +111,40 @@ async function syncNow() {
 document.addEventListener("DOMContentLoaded", () => {
   loadOptions();
 
-  // Enable/disable toggle
-  document.getElementById("github-prs-enabled").addEventListener("change", (e) => {
-    updateGroupCardState("github-prs", e.target.checked);
+  // Auto-save on any change
+  const inputs = [
+    "github-prs-enabled",
+    "github-prs-token",
+    "github-prs-queries",
+    "github-prs-groupTitle",
+    "github-prs-groupColor",
+    "github-prs-pollMinutes",
+    "github-prs-closeMissing"
+  ];
+
+  inputs.forEach(id => {
+    const element = document.getElementById(id);
+    if (element) {
+      element.addEventListener("change", saveOptions);
+      // Also save on input for text fields (more responsive)
+      if (element.type === "text" || element.type === "password" || element.tagName === "TEXTAREA") {
+        element.addEventListener("input", debounce(saveOptions, 500));
+      }
+    }
   });
 
-  document.getElementById("save").addEventListener("click", saveOptions);
   document.getElementById("syncNow").addEventListener("click", syncNow);
 });
+
+// Debounce helper for auto-save
+function debounce(func, wait) {
+  let timeout;
+  return function executedFunction(...args) {
+    const later = () => {
+      clearTimeout(timeout);
+      func(...args);
+    };
+    clearTimeout(timeout);
+    timeout = setTimeout(later, wait);
+  };
+}
