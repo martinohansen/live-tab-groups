@@ -123,6 +123,13 @@ async function syncGroup(providerId, config, windowId) {
   console.log(`[Live Tab Groups] Starting sync for ${providerId}`);
 
   try {
+    // Get active tabs to protect them from modifications
+    const activeTabs = await browser.tabs.query({ active: true, windowId });
+    const activeTabIds = new Set(activeTabs.map(t => t.id));
+    if (activeTabIds.size > 0) {
+      console.log(`[Live Tab Groups] Protecting ${activeTabIds.size} active tab(s) from modifications`);
+    }
+
     // Check if group exists (returns null if not)
     let groupId = await findOrCreateGroup(windowId, config.groupTitle, config.groupColor);
     console.log(`[Live Tab Groups] Group ID: ${groupId ? groupId : 'null (will create)'}`);
@@ -151,8 +158,10 @@ async function syncGroup(providerId, config, windowId) {
     }
     console.log(`[Live Tab Groups] Need to create ${need.length} new tabs`);
 
-    // Collect all tabs that should be in the group
-    const allTabIds = Array.from(existingMap.values()).map(t => t.id);
+    // Collect all tabs that should be in the group (excluding active tabs)
+    const allTabIds = Array.from(existingMap.values())
+      .filter(t => !activeTabIds.has(t.id))
+      .map(t => t.id);
 
     // Create new tabs
     const created = [];
@@ -196,11 +205,25 @@ async function syncGroup(providerId, config, windowId) {
       }
 
       // Only close tabs that have fully loaded URLs and don't match our list
+      // Never close active tabs
       const toClose = inGroup.filter(t => {
         if (!t.url || t.url === "about:blank") return false;
+        if (activeTabIds.has(t.id)) return false; // Skip active tabs
         const normalized = provider.normalizeUrl ? provider.normalizeUrl(t.url) : t.url;
         return !keepNormalized.has(normalized);
       });
+
+      // Check if any active tabs were skipped
+      const skippedActive = inGroup.filter(t => {
+        if (!t.url || t.url === "about:blank") return false;
+        if (!activeTabIds.has(t.id)) return false;
+        const normalized = provider.normalizeUrl ? provider.normalizeUrl(t.url) : t.url;
+        return !keepNormalized.has(normalized);
+      });
+
+      if (skippedActive.length > 0) {
+        console.log(`[Live Tab Groups] Skipped closing ${skippedActive.length} active tab(s):`, skippedActive.map(t => t.url));
+      }
 
       if (toClose.length > 0) {
         console.log(`[Live Tab Groups] Closing ${toClose.length} tabs no longer in query results`);
