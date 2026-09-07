@@ -11,6 +11,7 @@ const DEFAULTS = {
       ],
       groupTitle: "GitHub PRs",
       groupColor: "blue",
+      sortOrder: "oldest",
       pollMinutes: 5,
       closeMissing: true
     }
@@ -40,6 +41,7 @@ async function loadOptions() {
 
   document.getElementById("github-prs-groupTitle").value = githubConfig.groupTitle || "";
   document.getElementById("github-prs-groupColor").value = githubConfig.groupColor || "blue";
+  document.getElementById("github-prs-sortOrder").value = githubConfig.sortOrder || "oldest";
   document.getElementById("github-prs-pollMinutes").value = githubConfig.pollMinutes || 5;
   document.getElementById("github-prs-closeMissing").checked = githubConfig.closeMissing !== false;
 }
@@ -60,6 +62,7 @@ async function saveOptions() {
         queries: queries,
         groupTitle: document.getElementById("github-prs-groupTitle").value.trim() || "GitHub PRs",
         groupColor: document.getElementById("github-prs-groupColor").value,
+        sortOrder: document.getElementById("github-prs-sortOrder").value,
         pollMinutes: Math.max(1, parseInt(document.getElementById("github-prs-pollMinutes").value || "5", 10)),
         closeMissing: document.getElementById("github-prs-closeMissing").checked
       }
@@ -118,6 +121,7 @@ document.addEventListener("DOMContentLoaded", () => {
     "github-prs-queries",
     "github-prs-groupTitle",
     "github-prs-groupColor",
+    "github-prs-sortOrder",
     "github-prs-pollMinutes",
     "github-prs-closeMissing"
   ];
