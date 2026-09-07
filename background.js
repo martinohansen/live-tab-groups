@@ -14,6 +14,7 @@ const DEFAULTS = {
       ],
       groupTitle: "GitHub PRs",
       groupColor: "blue",
+      sortOrder: "oldest",
       pollMinutes: 5,
       closeMissing: true
     }
@@ -107,6 +108,30 @@ async function tabsInGroup(groupId) {
   return await browser.tabs.query({ groupId });
 }
 
+// Apply the provider's URL order to existing and newly created tabs.
+async function sortGroupTabs(groupId, orderedTabIds) {
+  const inGroup = (await tabsInGroup(groupId)).sort((a, b) => a.index - b.index);
+  if (inGroup.length < 2) return;
+
+  const rank = new Map(orderedTabIds.map((id, index) => [id, index]));
+  // Retained tabs outside the query results stay at the end in their current order.
+  const sorted = [...inGroup].sort((a, b) =>
+    (rank.get(a.id) ?? rank.size) - (rank.get(b.id) ?? rank.size));
+  const currentIds = inGroup.map(t => t.id);
+  const startIndex = inGroup[0].index;
+
+  for (let i = 0; i < sorted.length; i++) {
+    const id = sorted[i].id;
+    if (currentIds[i] === id) continue;
+
+    // Move within the group's existing range without changing the selected tab.
+    await browser.tabs.move(id, { index: startIndex + i });
+    const oldIndex = currentIds.indexOf(id);
+    currentIds.splice(oldIndex, 1);
+    currentIds.splice(i, 0, id);
+  }
+}
+
 // Sync a single group provider
 async function syncGroup(providerId, config, windowId) {
   const provider = getProvider(providerId);
@@ -123,11 +148,11 @@ async function syncGroup(providerId, config, windowId) {
   console.log(`[Live Tab Groups] Starting sync for ${providerId}`);
 
   try {
-    // Get active tabs to protect them from modifications
+    // Protect active tabs from regrouping and closing. Sorting keeps them selected.
     const activeTabs = await browser.tabs.query({ active: true, windowId });
     const activeTabIds = new Set(activeTabs.map(t => t.id));
     if (activeTabIds.size > 0) {
-      console.log(`[Live Tab Groups] Protecting ${activeTabIds.size} active tab(s) from modifications`);
+      console.log(`[Live Tab Groups] Protecting ${activeTabIds.size} active tab(s) from regrouping and closing`);
     }
 
     // Check if group exists (returns null if not)
@@ -238,6 +263,10 @@ async function syncGroup(providerId, config, windowId) {
       } else {
         console.log(`[Live Tab Groups] No tabs need to be closed`);
       }
+    }
+
+    if (groupId !== null) {
+      await sortGroupTabs(groupId, urls.map(url => existingMap.get(url).id));
     }
 
     console.log(`[Live Tab Groups] ✓ Sync completed successfully for ${providerId}`);

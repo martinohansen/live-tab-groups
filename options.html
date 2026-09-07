@@ -277,6 +277,20 @@
 
   <div class="preference-row">
     <div class="preference-label">
+      <label class="preference-label-text" for="github-prs-sortOrder">Sort PRs</label>
+      <span class="preference-description">Sort by creation date or PR title. Applied on each sync.</span>
+    </div>
+    <div class="preference-control">
+      <select id="github-prs-sortOrder">
+        <option value="oldest">Oldest first</option>
+        <option value="newest">Newest first</option>
+        <option value="title">Title (A–Z)</option>
+      </select>
+    </div>
+  </div>
+
+  <div class="preference-row">
+    <div class="preference-label">
       <span class="preference-label-text">Poll interval (minutes)</span>
       <span class="preference-description">How often to check for new pull requests</span>
     </div>

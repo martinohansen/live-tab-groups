@@ -34,14 +34,16 @@ class GitHubPRProvider {
 
     const queries = Array.isArray(config.queries) ? config.queries : [config.query || config.queries];
     console.log(`[${this.id}] Processing ${queries.length} queries`);
-    const allUrls = new Set();
+    const allPRs = new Map();
+    const sortOrder = config.sortOrder || "oldest";
 
     // Execute all queries and combine results
     for (const query of queries) {
       if (!query || !query.trim()) continue;
 
       const resolvedQuery = query.replace(/@me/g, username);
-      const url = `https://api.github.com/search/issues?q=${encodeURIComponent(resolvedQuery)}&per_page=100`;
+      const ageSort = sortOrder === "title" ? "" : `&sort=created&order=${sortOrder === "newest" ? "desc" : "asc"}`;
+      const url = `https://api.github.com/search/issues?q=${encodeURIComponent(resolvedQuery)}&per_page=100${ageSort}`;
 
       console.log(`[${this.id}] Executing query: "${query}"`);
       console.log(`[${this.id}] Resolved to: "${resolvedQuery}"`);
@@ -70,19 +72,28 @@ class GitHubPRProvider {
         console.log(`[${this.id}] Query returned ${j.total_count} total results, ${j.items?.length || 0} items in this page`);
 
         // Keep only PRs
-        const urls = (j.items || [])
-          .filter(it => it.pull_request && it.html_url)
-          .map(it => it.html_url);
+        const prs = (j.items || [])
+          .filter(it => it.pull_request && it.html_url);
 
-        console.log(`[${this.id}] Found ${urls.length} PRs from this query`);
-        urls.forEach(u => allUrls.add(u));
+        console.log(`[${this.id}] Found ${prs.length} PRs from this query`);
+        prs.forEach(pr => allPRs.set(pr.html_url, pr));
       } catch (error) {
         console.error(`[${this.id}] Error fetching query "${query}":`, error);
       }
     }
 
-    console.log(`[${this.id}] ✓ Total unique PRs found: ${allUrls.size}`);
-    return Array.from(allUrls);
+    // Sort after merging so query order and duplicate results do not affect tab order.
+    const collator = new Intl.Collator(undefined, { sensitivity: "base", numeric: true });
+    const prs = Array.from(allPRs.values()).sort((a, b) => {
+      const comparison = sortOrder === "title"
+        ? collator.compare(a.title || "", b.title || "")
+        : (Date.parse(a.created_at) - Date.parse(b.created_at)) * (sortOrder === "newest" ? -1 : 1);
+      // Use the URL as a stable tie-breaker to avoid reshuffling equal dates or titles.
+      return comparison || collator.compare(a.html_url, b.html_url);
+    });
+
+    console.log(`[${this.id}] ✓ Total unique PRs found: ${allPRs.size}`);
+    return prs.map(pr => pr.html_url);
   }
 
   // Match pattern for tabs that could belong to this group
@@ -125,6 +136,7 @@ class GitHubPRProvider {
       query: "is:pr is:open involves:@me archived:false",
       groupTitle: "GitHub PRs",
       groupColor: "blue",
+      sortOrder: "oldest",
       pollMinutes: 5,
       closeMissing: true
     };
