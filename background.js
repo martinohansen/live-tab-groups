@@ -136,8 +136,7 @@ async function sortGroupTabs(groupId, orderedTabIds) {
 async function syncGroup(providerId, config, windowId) {
   const provider = getProvider(providerId);
   if (!provider) {
-    console.error(`[Live Tab Groups] Provider ${providerId} not found`);
-    return;
+    throw new Error(`Provider ${providerId} not found`);
   }
 
   if (!config.enabled) {
@@ -169,7 +168,7 @@ async function syncGroup(providerId, config, windowId) {
       const existingTabs = await tabsInGroup(groupId);
       if (existingTabs.length > 0) {
         console.warn(`[Live Tab Groups] ⚠️ API returned 0 URLs but group has ${existingTabs.length} tabs. Skipping sync to prevent data loss. This might indicate an API error or auth issue.`);
-        return;
+        return "No pull requests matched. Existing tabs were kept for safety.";
       }
     }
 
@@ -270,6 +269,9 @@ async function syncGroup(providerId, config, windowId) {
     }
 
     console.log(`[Live Tab Groups] ✓ Sync completed successfully for ${providerId}`);
+    return urls.length === 0
+      ? "No pull requests matched. No tabs were changed."
+      : `Synced ${urls.length} pull request(s); created ${created.length} tab(s).`;
   } catch (error) {
     console.error(`[Live Tab Groups] ✗ Sync failed for ${providerId}:`, error);
     throw error;
@@ -284,16 +286,24 @@ async function syncAll() {
   const [win] = await browser.windows.getAll({ populate: false, windowTypes: ["normal"] });
   const windowId = win ? win.id : (await browser.windows.getCurrent()).id;
 
+  const messages = [];
+  const errors = [];
+
   // Sync each enabled group
   for (const [providerId, config] of Object.entries(cfg.groups)) {
     if (config.enabled) {
       try {
-        await syncGroup(providerId, config, windowId);
+        messages.push(await syncGroup(providerId, config, windowId));
       } catch (error) {
         console.error(`[Live Tab Groups] Failed to sync ${providerId}:`, error);
+        errors.push(`${providerId}: ${error.message}`);
       }
     }
   }
+
+  if (errors.length) return { success: false, error: errors.join("\n") };
+  if (!messages.length) return { success: false, error: "No providers are enabled. Enable GitHub PRs in settings." };
+  return { success: true, message: messages.join("\n") };
 }
 
 // Extension installed/updated
@@ -347,9 +357,7 @@ browser.alarms.onAlarm.addListener(async (alarm) => {
 browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.action === "syncNow") {
     syncAll()
-      .then(() => {
-        sendResponse({ success: true });
-      })
+      .then(sendResponse)
       .catch(err => {
         console.error("[Live Tab Groups] Manual sync failed:", err);
         sendResponse({ success: false, error: err.message });

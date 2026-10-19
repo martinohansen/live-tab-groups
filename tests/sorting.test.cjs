@@ -59,7 +59,11 @@ function backgroundContext(initialTabs, urls, hasGroup = true) {
   reindex();
   const event = { addListener() {} };
   context.browser = {
-    runtime: { onInstalled: event, onStartup: event, onMessage: event },
+    runtime: {
+      onInstalled: event, onStartup: event,
+      onMessage: { addListener(listener) { context.onMessage = listener; } }
+    },
+    windows: { getAll: async () => [{ id: 1 }] },
     alarms: { onAlarm: event },
     storage: { local: { get: async () => ({ cfg: { groups: { "github-prs": { token: "saved" } } } }) } },
     tabGroups: {
@@ -158,3 +162,100 @@ test("existing configuration gains oldest-first sorting without losing saved set
   assert.equal(cfg.groups["github-prs"].sortOrder, "oldest");
   assert.equal(cfg.groups["github-prs"].token, "saved");
 });
+
+function manualSync(context) {
+  return new Promise(resolve => {
+    assert.equal(context.onMessage({ action: "syncNow" }, {}, resolve), true);
+  });
+}
+
+test("manual sync reports a rejected token and preserves existing tabs", async () => {
+  const { context, tabs, removed } = backgroundContext([
+    { id: 1, url: prUrl(1), groupId: 7 }
+  ], []);
+  context.fetch = async () => ({ ok: false, status: 401 });
+  vm.runInContext('window.LiveTabGroupsProviders["github-prs"] = new GitHubPRProvider()', context);
+  const result = await manualSync(context);
+  assert.equal(result.success, false);
+  assert.match(result.error, /401 Bad credentials.*Replace the token/);
+  assert.equal(tabs.length, 1);
+  assert.deepEqual(removed, []);
+});
+
+test("a failed search aborts partial results before tabs change", async () => {
+  const { context, tabs, removed } = backgroundContext([
+    { id: 9, url: prUrl(9), groupId: 7 }
+  ], []);
+  let searchCount = 0;
+  context.fetch = async url => {
+    if (url.endsWith("/user")) return { ok: true, json: async () => ({ login: "martin" }) };
+    if (++searchCount === 1) return { ok: true, json: async () => ({ items: [pr(1, "One", "01")] }) };
+    return { ok: false, status: 403, json: async () => ({ message: "API rate limit exceeded" }) };
+  };
+  vm.runInContext('window.LiveTabGroupsProviders["github-prs"] = new GitHubPRProvider()', context);
+  const result = await manualSync(context);
+  assert.equal(result.success, false);
+  assert.match(result.error, /GitHub search failed \(403\): API rate limit exceeded/);
+  assert.deepEqual(tabs.map(tab => tab.id), [9]);
+  assert.deepEqual(removed, []);
+});
+
+test("provider rejects missing tokens, blank queries, and network errors", async () => {
+  const context = providerContext(async () => { throw new Error("NetworkError"); });
+  const provider = context.window.LiveTabGroupsProviders["github-prs"];
+  await assert.rejects(provider.fetchUrls({}), /GitHub token is required/);
+  provider.getUsername = async () => "martin";
+  await assert.rejects(provider.fetchUrls({ token: "test", queries: [" "] }), /search query is required/);
+  await assert.rejects(provider.fetchUrls({ token: "test", queries: ["author:@me"] }), /Query "author:@me": NetworkError/);
+  context.fetch = async () => ({ ok: false, status: 502, statusText: "Bad Gateway", json: async () => { throw new Error("Invalid JSON"); } });
+  await assert.rejects(provider.fetchUrls({ token: "test", queries: ["author:@me"] }), /GitHub search failed \(502\): Bad Gateway/);
+});
+
+test("manual sync explains empty results and disabled providers", async () => {
+  const { context } = backgroundContext([], [], false);
+  let result = await manualSync(context);
+  assert.equal(result.success, true);
+  assert.match(result.message, /No pull requests matched/);
+  context.browser.storage.local.get = async () => ({ cfg: { groups: { "github-prs": { enabled: false } } } });
+  result = await manualSync(context);
+  assert.equal(result.success, false);
+  assert.match(result.error, /No providers are enabled/);
+});
+
+test("manual sync explains why empty results preserve an existing group", async () => {
+  const { context, removed } = backgroundContext([{ id: 1, url: prUrl(1), groupId: 7 }], []);
+  const result = await manualSync(context);
+  assert.equal(result.success, true);
+  assert.match(result.message, /Existing tabs were kept for safety/);
+  assert.deepEqual(removed, []);
+});
+
+for (const result of [
+  { success: false, error: "GitHub rejected the token" },
+  undefined,
+  { success: true, message: "Synced 3 pull request(s); created 1 tab(s)." }
+]) {
+  test(`options reports the background result: ${JSON.stringify(result)}`, async () => {
+    const elements = {};
+    const events = [];
+    const context = vm.createContext({
+      console: quietConsole, setTimeout() {}, clearTimeout() {},
+      document: {
+        addEventListener() {},
+        getElementById: id => elements[id] ||= { value: "", style: {} }
+      },
+      browser: {
+        storage: { local: { set: async () => { events.push("save"); } } },
+        alarms: { clear: async () => {} },
+        runtime: { sendMessage: async () => { events.push("sync"); return result; } }
+      }
+    });
+    vm.runInContext(source("options.js"), context);
+    await context.syncNow();
+    assert.deepEqual(events, ["save", "sync"]);
+    assert.equal(elements.syncStatus.className, `status-message ${result?.success ? "success" : "error"}`);
+    assert.equal(elements.syncStatus.textContent, result?.success ? result.message
+      : `Sync failed: ${result?.error || "The background script did not return a sync result."}`);
+    assert.equal(elements.syncNow.disabled, false);
+  });
+}
