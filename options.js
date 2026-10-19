@@ -86,10 +86,12 @@ function showStatus(message, isError = false) {
   statusEl.className = "status-message " + (isError ? "error" : "success");
   statusEl.style.display = "block";
 
-  // Auto-hide after 3 seconds
-  setTimeout(() => {
-    statusEl.style.display = "none";
-  }, 3000);
+  clearTimeout(showStatus.timeout);
+  if (!isError) {
+    showStatus.timeout = setTimeout(() => {
+      statusEl.style.display = "none";
+    }, 3000);
+  }
 }
 
 async function syncNow() {
@@ -99,8 +101,12 @@ async function syncNow() {
 
   try {
     // Send message to background script to trigger sync
-    await browser.runtime.sendMessage({ action: "syncNow" });
-    showStatus("Sync completed successfully!");
+    await saveOptions();
+    const result = await browser.runtime.sendMessage({ action: "syncNow" });
+    if (!result?.success) {
+      throw new Error(result?.error || "The background script did not return a sync result.");
+    }
+    showStatus(result.message);
   } catch (error) {
     showStatus(`Sync failed: ${error.message}`, true);
     console.error("Sync error:", error);

@@ -16,7 +16,11 @@ class GitHubPRProvider {
         Accept: "application/vnd.github+json"
       }
     });
-    if (!r.ok) throw new Error(`GitHub /user ${r.status}`);
+    if (!r.ok) {
+      throw new Error(r.status === 401
+        ? "GitHub rejected the token (401 Bad credentials). Replace the token in settings."
+        : `GitHub /user failed (${r.status}). Check token access and try again.`);
+    }
     const j = await r.json();
     return j.login;
   }
@@ -24,8 +28,7 @@ class GitHubPRProvider {
   // Fetch PR URLs from GitHub API
   async fetchUrls(config) {
     if (!config.token) {
-      console.warn(`[${this.id}] No GitHub token configured`);
-      return [];
+      throw new Error("GitHub token is required. Add a token in settings.");
     }
 
     console.log(`[${this.id}] Fetching username...`);
@@ -33,6 +36,9 @@ class GitHubPRProvider {
     console.log(`[${this.id}] Username: ${username}`);
 
     const queries = Array.isArray(config.queries) ? config.queries : [config.query || config.queries];
+    if (!queries.some(query => query && query.trim())) {
+      throw new Error("At least one GitHub search query is required.");
+    }
     console.log(`[${this.id}] Processing ${queries.length} queries`);
     const allPRs = new Map();
     const sortOrder = config.sortOrder || "oldest";
@@ -57,15 +63,8 @@ class GitHubPRProvider {
         });
 
         if (!r.ok) {
-          const errorText = await r.text();
-          console.error(`[${this.id}] GitHub API error for query "${query}": ${r.status} ${r.statusText}`);
-          console.error(`[${this.id}] Response body:`, errorText);
-
-          // If auth fails, this is critical
-          if (r.status === 401 || r.status === 403) {
-            console.error(`[${this.id}] ⚠️ Authentication failed! Token may be invalid or expired.`);
-          }
-          continue;
+          const details = await r.json().catch(() => ({}));
+          throw new Error(`GitHub search failed (${r.status}): ${details.message || r.statusText}`);
         }
 
         const j = await r.json();
@@ -78,7 +77,7 @@ class GitHubPRProvider {
         console.log(`[${this.id}] Found ${prs.length} PRs from this query`);
         prs.forEach(pr => allPRs.set(pr.html_url, pr));
       } catch (error) {
-        console.error(`[${this.id}] Error fetching query "${query}":`, error);
+        throw new Error(`Query "${query}": ${error.message}`);
       }
     }
 
