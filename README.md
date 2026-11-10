@@ -19,21 +19,6 @@ active tab selected and preserves PR sub-pages such as `/files`.
 Each query currently fetches up to 100 results. Sorting applies to those fetched
 results.
 
-## GitHub tokens
-
-In the extension settings, enter one token per line in **GitHub tokens**.
-Enter one query per line in **Search queries**. Settings save automatically.
-Blank lines and duplicate tokens are ignored.
-
-Use `@me` for the username associated with each token. A query must succeed
-with at least one token. Tokens without access to its organization or repository
-are skipped for that query. Other errors stop sync and keep existing tabs.
-Errors identify tokens by their position in the list.
-
-For fine-grained tokens, select the required repositories and grant
-**Pull requests: Read-only**. Organization access may require administrator
-approval. Classic tokens need the `repo` scope for private repositories.
-
 ## Screenshots
 
 ![settings page](settings.png)
