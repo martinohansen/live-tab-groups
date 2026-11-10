@@ -26,10 +26,14 @@ async function getCfg() {
   // Merge with defaults
   const merged = { groups: {} };
   for (const [providerId, defaultConfig] of Object.entries(DEFAULTS.groups)) {
+    const saved = cfg?.groups?.[providerId] || {};
     merged.groups[providerId] = {
       ...defaultConfig,
-      ...(cfg?.groups?.[providerId] || {})
+      ...saved
     };
+    if (saved.query && !Array.isArray(saved.queries)) {
+      merged.groups[providerId].queries = [saved.query];
+    }
   }
   return merged;
 }

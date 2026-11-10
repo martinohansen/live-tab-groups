@@ -92,6 +92,10 @@
       resize: vertical;
     }
 
+    #github-prs-tokens {
+      -webkit-text-security: disc;
+    }
+
     select {
       font: message-box;
       font-size: 13.33px;
@@ -144,17 +148,16 @@
       cursor: not-allowed;
     }
 
-    button.secondary {
-      background: #f0f0f4;
-      color: #15141a;
-    }
+    @media (max-width: 640px) {
+      .token-settings, .shared-queries {
+        grid-template-columns: 1fr;
+        gap: 8px;
+      }
 
-    button.secondary:hover {
-      background: #e0e0e6;
-    }
-
-    button.secondary:active {
-      background: #cfcfd8;
+      .token-settings textarea, .shared-queries textarea {
+        width: 100%;
+        min-width: 0;
+      }
     }
 
     .section-header {
@@ -228,24 +231,20 @@
     </div>
   </div>
 
-  <div class="preference-row">
+  <div class="preference-row token-settings">
     <div class="preference-label">
-      <span class="preference-label-text">GitHub Personal Access Token</span>
-      <span class="preference-description">Token with <code>repo</code> scope. Create at <a href="https://github.com/settings/tokens" target="_blank">github.com/settings/tokens</a></span>
+      <label class="preference-label-text" for="github-prs-tokens">GitHub tokens</label>
+      <span class="preference-description">Create a <a href="https://github.com/settings/tokens" target="_blank" rel="noopener noreferrer">personal access token</a> with access to the required repositories. One token per line.</span>
     </div>
-    <div class="preference-control">
-      <input type="password" id="github-prs-token" placeholder="ghp_...">
-    </div>
+    <textarea id="github-prs-tokens" rows="3" placeholder="One GitHub token per line" autocomplete="off" spellcheck="false" autocapitalize="off" wrap="off"></textarea>
   </div>
 
-  <div class="preference-row">
+  <div class="preference-row shared-queries">
     <div class="preference-label">
-      <span class="preference-label-text">Search queries</span>
-      <span class="preference-description">One query per line. Results from all queries are combined. Use <code>@me</code> as a placeholder for your username</span>
+      <label class="preference-label-text" for="github-prs-queries">Search queries</label>
+      <span class="preference-description">Use <code>@me</code> for your GitHub username. One query per line.</span>
     </div>
-    <div class="preference-control">
-      <textarea id="github-prs-queries" rows="5"></textarea>
-    </div>
+    <textarea id="github-prs-queries" rows="5" spellcheck="false"></textarea>
   </div>
 
   <div class="preference-row">

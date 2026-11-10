@@ -18,26 +18,29 @@ const DEFAULTS = {
   }
 };
 
+let loadedConfig = DEFAULTS;
+function readTokens() {
+  return [...new Set(document.getElementById("github-prs-tokens").value.split("\n")
+    .map(token => token.trim()).filter(Boolean))];
+}
+
 async function loadOptions() {
   const { cfg } = await browser.storage.local.get("cfg");
   const config = cfg || DEFAULTS;
+  loadedConfig = config;
 
   // Load GitHub PRs configuration
   const githubConfig = config.groups?.["github-prs"] || DEFAULTS.groups["github-prs"];
 
   document.getElementById("github-prs-enabled").checked = githubConfig.enabled !== false;
-  document.getElementById("github-prs-token").value = githubConfig.token || "";
-
-  // Handle both old single query and new queries array
-  let queries = githubConfig.queries;
-  if (githubConfig.query && !Array.isArray(githubConfig.queries)) {
-    queries = [githubConfig.query];
-  }
-  // If no queries configured, use defaults
-  if (!queries || queries.length === 0) {
-    queries = DEFAULTS.groups["github-prs"].queries;
-  }
-  document.getElementById("github-prs-queries").value = queries.join("\n");
+  const provider = window.LiveTabGroupsProviders["github-prs"];
+  document.getElementById("github-prs-tokens").value = provider.getTokens(githubConfig)
+    .map(entry => entry.token).join("\n");
+  const hasQueries = Array.isArray(githubConfig.queries) || githubConfig.query !== undefined
+    || githubConfig.tokens?.some(entry => Array.isArray(entry.queries));
+  document.getElementById("github-prs-queries").value = provider.getQueries(
+    hasQueries ? githubConfig : DEFAULTS.groups["github-prs"]
+  ).join("\n");
 
   document.getElementById("github-prs-groupTitle").value = githubConfig.groupTitle || "";
   document.getElementById("github-prs-groupColor").value = githubConfig.groupColor || "blue";
@@ -47,19 +50,15 @@ async function loadOptions() {
 }
 
 async function saveOptions() {
-  // Parse queries from textarea (one per line)
-  const queriesText = document.getElementById("github-prs-queries").value;
-  const queries = queriesText
-    .split("\n")
-    .map(q => q.trim())
-    .filter(q => q.length > 0);
-
   const cfg = {
+    ...loadedConfig,
     groups: {
+      ...loadedConfig.groups,
       "github-prs": {
         enabled: document.getElementById("github-prs-enabled").checked,
-        token: document.getElementById("github-prs-token").value.trim(),
-        queries: queries,
+        tokens: readTokens(),
+        queries: document.getElementById("github-prs-queries").value.split("\n")
+          .map(query => query.trim()).filter(Boolean),
         groupTitle: document.getElementById("github-prs-groupTitle").value.trim() || "GitHub PRs",
         groupColor: document.getElementById("github-prs-groupColor").value,
         sortOrder: document.getElementById("github-prs-sortOrder").value,
@@ -70,6 +69,7 @@ async function saveOptions() {
   };
 
   await browser.storage.local.set({ cfg });
+  loadedConfig = cfg;
 
   // Clear and recreate alarms
   for (const [providerId, config] of Object.entries(cfg.groups)) {
@@ -77,6 +77,14 @@ async function saveOptions() {
     if (config.enabled) {
       await browser.alarms.create(`sync-${providerId}`, { periodInMinutes: config.pollMinutes });
     }
+  }
+}
+
+async function autoSave() {
+  try {
+    await saveOptions();
+  } catch (error) {
+    showStatus(`Could not save settings: ${error.message}`, true);
   }
 }
 
@@ -117,13 +125,18 @@ async function syncNow() {
 }
 
 // Set up event listeners
-document.addEventListener("DOMContentLoaded", () => {
-  loadOptions();
+document.addEventListener("DOMContentLoaded", async () => {
+  try {
+    await loadOptions();
+  } catch (error) {
+    showStatus(`Could not load settings: ${error.message}`, true);
+    return;
+  }
 
   // Auto-save on any change
   const inputs = [
     "github-prs-enabled",
-    "github-prs-token",
+    "github-prs-tokens",
     "github-prs-queries",
     "github-prs-groupTitle",
     "github-prs-groupColor",
@@ -135,10 +148,10 @@ document.addEventListener("DOMContentLoaded", () => {
   inputs.forEach(id => {
     const element = document.getElementById(id);
     if (element) {
-      element.addEventListener("change", saveOptions);
+      element.addEventListener("change", autoSave);
       // Also save on input for text fields (more responsive)
       if (element.type === "text" || element.type === "password" || element.tagName === "TEXTAREA") {
-        element.addEventListener("input", debounce(saveOptions, 500));
+        element.addEventListener("input", debounce(autoSave, 500));
       }
     }
   });

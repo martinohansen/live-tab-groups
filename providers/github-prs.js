@@ -25,59 +25,100 @@ class GitHubPRProvider {
     return j.login;
   }
 
+  getTokens(config) {
+    if (Array.isArray(config.tokens)) {
+      return config.tokens.map(entry => ({ token: typeof entry === "string" ? entry : entry.token }));
+    }
+    return [{ token: config.token || "" }];
+  }
+
+  getQueries(config) {
+    // Saved token entries can contain queries that must remain available.
+    const tokenQueries = config.tokens?.filter(entry => Array.isArray(entry.queries));
+    const queries = tokenQueries?.length
+      ? tokenQueries.flatMap(entry => entry.queries)
+      : Array.isArray(config.queries) ? config.queries : [config.query || config.queries || ""];
+    return [...new Set(queries.map(query => query.trim()).filter(Boolean))];
+  }
+
   // Fetch PR URLs from GitHub API
   async fetchUrls(config) {
-    if (!config.token) {
-      throw new Error("GitHub token is required. Add a token in settings.");
-    }
+    const tokens = this.getTokens(config);
+    const errors = this.validateTokens(tokens);
+    const queries = this.getQueries(config);
+    if (!queries.length) errors.push("At least one GitHub search query is required.");
+    if (errors.length) throw new Error(errors.join("\n"));
 
-    console.log(`[${this.id}] Fetching username...`);
-    const username = await this.getUsername(config);
-    console.log(`[${this.id}] Username: ${username}`);
-
-    const queries = Array.isArray(config.queries) ? config.queries : [config.query || config.queries];
-    if (!queries.some(query => query && query.trim())) {
-      throw new Error("At least one GitHub search query is required.");
-    }
-    console.log(`[${this.id}] Processing ${queries.length} queries`);
     const allPRs = new Map();
+    const successfulQueries = new Set();
+    const accessErrors = new Map(queries.map(query => [query, []]));
     const sortOrder = config.sortOrder || "oldest";
 
-    // Execute all queries and combine results
-    for (const query of queries) {
-      if (!query || !query.trim()) continue;
-
-      const resolvedQuery = query.replace(/@me/g, username);
-      const ageSort = sortOrder === "title" ? "" : `&sort=created&order=${sortOrder === "newest" ? "desc" : "asc"}`;
-      const url = `https://api.github.com/search/issues?q=${encodeURIComponent(resolvedQuery)}&per_page=100${ageSort}`;
-
-      console.log(`[${this.id}] Executing query: "${query}"`);
-      console.log(`[${this.id}] Resolved to: "${resolvedQuery}"`);
-
+    for (const [index, entry] of tokens.entries()) {
+      const label = `Token ${index + 1}`;
       try {
-        const r = await fetch(url, {
-          headers: {
-            Authorization: `Bearer ${config.token}`,
-            Accept: "application/vnd.github+json"
+        const username = await this.getUsername(entry);
+        for (const query of queries) {
+          const resolvedQuery = query.replace(/@me/g, username);
+          const ageSort = sortOrder === "title" ? "" : `&sort=created&order=${sortOrder === "newest" ? "desc" : "asc"}`;
+          const url = `https://api.github.com/search/issues?q=${encodeURIComponent(resolvedQuery)}&per_page=100${ageSort}`;
+
+          console.log(`[${this.id}] Executing query: "${query}"`);
+          console.log(`[${this.id}] Resolved to: "${resolvedQuery}"`);
+
+          try {
+            const r = await fetch(url, {
+              headers: {
+                Authorization: `Bearer ${entry.token}`,
+                Accept: "application/vnd.github+json"
+              }
+            });
+
+            if (!r.ok) {
+              const details = await r.json().catch(() => ({}));
+              const validationErrors = Array.isArray(details.errors) ? details.errors : [];
+              const message = [details.message || r.statusText,
+                ...validationErrors.map(error => typeof error === "string" ? error : error.message)
+              ].filter(Boolean).join(": ");
+              const searchError = `GitHub search failed (${r.status}): ${message}`;
+              // Organization-scoped tokens can reject queries that another token can run.
+              const inaccessibleScope = r.status === 422 && (
+                validationErrors.some(error =>
+                  error.resource === "Search" && error.field === "q" && error.code === "invalid"
+                  && error.message?.includes("cannot be searched")
+                  && error.message.includes("permission"))
+                || (message.includes("Access to the requested organization (")
+                  && message.includes("blocked by SAML single sign-on"))
+              );
+              if (inaccessibleScope) {
+                accessErrors.get(query).push(`${label}: ${searchError}`);
+                continue;
+              }
+              throw new Error(searchError);
+            }
+
+            const j = await r.json();
+            successfulQueries.add(query);
+            console.log(`[${this.id}] Query returned ${j.total_count} total results, ${j.items?.length || 0} items in this page`);
+
+            // Keep only PRs
+            const prs = (j.items || [])
+              .filter(it => it.pull_request && it.html_url);
+
+            console.log(`[${this.id}] Found ${prs.length} PRs from this query`);
+            prs.forEach(pr => allPRs.set(pr.html_url, pr));
+          } catch (error) {
+            throw new Error(`Query "${query}": ${error.message}`);
           }
-        });
-
-        if (!r.ok) {
-          const details = await r.json().catch(() => ({}));
-          throw new Error(`GitHub search failed (${r.status}): ${details.message || r.statusText}`);
         }
-
-        const j = await r.json();
-        console.log(`[${this.id}] Query returned ${j.total_count} total results, ${j.items?.length || 0} items in this page`);
-
-        // Keep only PRs
-        const prs = (j.items || [])
-          .filter(it => it.pull_request && it.html_url);
-
-        console.log(`[${this.id}] Found ${prs.length} PRs from this query`);
-        prs.forEach(pr => allPRs.set(pr.html_url, pr));
       } catch (error) {
-        throw new Error(`Query "${query}": ${error.message}`);
+        throw new Error(`${label}: ${error.message}`);
+      }
+    }
+
+    for (const query of queries) {
+      if (!successfulQueries.has(query)) {
+        throw new Error(`Query "${query}": ${accessErrors.get(query).join("; ")}`);
       }
     }
 
@@ -141,18 +182,20 @@ class GitHubPRProvider {
     };
   }
 
-  // Validate configuration
-  validateConfig(config) {
+  validateTokens(tokens) {
+    if (!tokens.length) return ["GitHub token is required. Add a token in settings."];
     const errors = [];
-    if (!config.token) {
-      errors.push("GitHub token is required");
-    }
-    if (!config.query) {
-      errors.push("Search query is required");
-    }
-    if (!config.groupTitle) {
-      errors.push("Group title is required");
-    }
+    tokens.forEach((entry, index) => {
+      const label = `Token ${index + 1}`;
+      if (!entry.token?.trim()) errors.push(`${label}: GitHub token is required.`);
+    });
+    return errors;
+  }
+
+  validateConfig(config) {
+    const errors = this.validateTokens(this.getTokens(config));
+    if (!this.getQueries(config).length) errors.push("At least one GitHub search query is required.");
+    if (!config.groupTitle) errors.push("Group title is required");
     return errors;
   }
 }
