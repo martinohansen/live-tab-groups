@@ -1,4 +1,4 @@
-# Live Tab Groups
+# <img src="icon.svg" alt="" height="32" align="absmiddle"> Live Tab Groups
 
 A Firefox extension that automatically creates and maintains tab groups from
 dynamic sources.

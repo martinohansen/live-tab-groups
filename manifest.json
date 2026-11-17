@@ -7,7 +7,11 @@
   "host_permissions": ["https://github.com/*"],
   "background": { "scripts": ["providers/github-prs.js", "background.js"] },
   "options_ui": { "page": "options.html" },
-  "action": { "default_title": "Live Tab Groups" },
+  "icons": { "48": "icon.svg", "96": "icon.svg" },
+  "action": {
+    "default_title": "Live Tab Groups",
+    "default_icon": "icon.svg"
+  },
   "browser_specific_settings": {
     "gecko": {
       "id": "@live-tab-groups.martinohansen",
