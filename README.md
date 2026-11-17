@@ -12,9 +12,6 @@ PRs you're reviewing, assigned to you, where you're mentioned or you created.
 
 ![settings page](settings.png)
 
-## Development
+## Contributing
 
-Run the tests with `node --test tests/*.test.cjs` (Node.js 18.0 or newer).
-Lint the extension with `web-ext lint --ignore-files 'tests/**'`.
-
-See [CONTRIBUTING.md](CONTRIBUTING.md) for release instructions.
+See [CONTRIBUTING.md](CONTRIBUTING.md) for instructions.
