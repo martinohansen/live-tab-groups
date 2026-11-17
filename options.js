@@ -2,7 +2,6 @@ const DEFAULTS = {
   groups: {
     "github-prs": {
       enabled: true,
-      token: "",
       queries: [
         "is:pr is:open review-requested:@me",
         "is:pr is:open assignee:@me",
@@ -19,10 +18,6 @@ const DEFAULTS = {
 };
 
 let loadedConfig = DEFAULTS;
-function readTokens() {
-  return [...new Set(document.getElementById("github-prs-tokens").value.split("\n")
-    .map(token => token.trim()).filter(Boolean))];
-}
 
 async function loadOptions() {
   const { cfg } = await browser.storage.local.get("cfg");
@@ -34,10 +29,7 @@ async function loadOptions() {
 
   document.getElementById("github-prs-enabled").checked = githubConfig.enabled !== false;
   const provider = window.LiveTabGroupsProviders["github-prs"];
-  document.getElementById("github-prs-tokens").value = provider.getTokens(githubConfig)
-    .map(entry => entry.token).join("\n");
-  const hasQueries = Array.isArray(githubConfig.queries) || githubConfig.query !== undefined
-    || githubConfig.tokens?.some(entry => Array.isArray(entry.queries));
+  const hasQueries = Array.isArray(githubConfig.queries) || githubConfig.query !== undefined;
   document.getElementById("github-prs-queries").value = provider.getQueries(
     hasQueries ? githubConfig : DEFAULTS.groups["github-prs"]
   ).join("\n");
@@ -56,7 +48,6 @@ async function saveOptions() {
       ...loadedConfig.groups,
       "github-prs": {
         enabled: document.getElementById("github-prs-enabled").checked,
-        tokens: readTokens(),
         queries: document.getElementById("github-prs-queries").value.split("\n")
           .map(query => query.trim()).filter(Boolean),
         groupTitle: document.getElementById("github-prs-groupTitle").value.trim() || "GitHub PRs",
@@ -136,7 +127,6 @@ document.addEventListener("DOMContentLoaded", async () => {
   // Auto-save on any change
   const inputs = [
     "github-prs-enabled",
-    "github-prs-tokens",
     "github-prs-queries",
     "github-prs-groupTitle",
     "github-prs-groupColor",

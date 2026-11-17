@@ -5,7 +5,6 @@ const DEFAULTS = {
   groups: {
     "github-prs": {
       enabled: true,
-      token: "",
       queries: [
         "is:pr is:open review-requested:@me",
         "is:pr is:open assignee:@me",

@@ -92,10 +92,6 @@
       resize: vertical;
     }
 
-    #github-prs-tokens {
-      -webkit-text-security: disc;
-    }
-
     select {
       font: message-box;
       font-size: 13.33px;
@@ -149,12 +145,12 @@
     }
 
     @media (max-width: 640px) {
-      .token-settings, .shared-queries {
+      .shared-queries {
         grid-template-columns: 1fr;
         gap: 8px;
       }
 
-      .token-settings textarea, .shared-queries textarea {
+      .shared-queries textarea {
         width: 100%;
         min-width: 0;
       }
@@ -231,18 +227,10 @@
     </div>
   </div>
 
-  <div class="preference-row token-settings">
-    <div class="preference-label">
-      <label class="preference-label-text" for="github-prs-tokens">GitHub tokens</label>
-      <span class="preference-description">Create a <a href="https://github.com/settings/tokens" target="_blank" rel="noopener noreferrer">personal access token</a> with access to the required repositories. One token per line.</span>
-    </div>
-    <textarea id="github-prs-tokens" rows="3" placeholder="One GitHub token per line" autocomplete="off" spellcheck="false" autocapitalize="off" wrap="off"></textarea>
-  </div>
-
   <div class="preference-row shared-queries">
     <div class="preference-label">
       <label class="preference-label-text" for="github-prs-queries">Search queries</label>
-      <span class="preference-description">Use <code>@me</code> for your GitHub username. One query per line.</span>
+      <span class="preference-description">Uses your github.com sign-in in Firefox. Use <code>@me</code> for your GitHub username. One query per line.</span>
     </div>
     <textarea id="github-prs-queries" rows="5" spellcheck="false"></textarea>
   </div>

@@ -16,8 +16,25 @@ Now** to apply it immediately, or wait for the next scheduled sync. Tabs kept
 outside the current results appear at the end of the group. Sorting keeps the
 active tab selected and preserves PR sub-pages such as `/files`.
 
-Each query currently fetches up to 100 results. Sorting applies to those fetched
+Each query fetches up to 100 results. Sorting applies to those fetched
 results.
+
+## GitHub sign-in
+
+The extension searches GitHub with your github.com sign-in in Firefox. It
+needs no access token, so it also works with organizations that enforce SAML
+single sign-on.
+
+Enter one query per line in **Search queries**. Settings save automatically.
+Use `@me` for your GitHub username.
+
+Sync stops and keeps existing tabs when you are not signed in to github.com,
+or when the SSO session for an organization has expired. To continue, open
+github.com, authenticate with the organization, and sync again.
+
+The extension reads the JSON response of the github.com search page. GitHub
+does not document this response, so a change on GitHub can stop sync until the
+extension is updated.
 
 ## Screenshots
 

@@ -8,8 +8,14 @@ const source = name => readFileSync(resolve(__dirname, "..", name), "utf8");
 const quietConsole = { log() {}, warn() {}, error() {} };
 const prUrl = id => `https://github.com/example/repo/pull/${id}`;
 const pr = (id, title, day) => ({
-  html_url: prUrl(id), title, created_at: `2026-01-${day}T12:00:00Z`,
-  pull_request: {}
+  number: id, hl_title: title, created: `2026-01-${day}T12:00:00Z`,
+  repo: { repository: { owner_login: "example", name: "repo" } }
+});
+const search = (results, overrides = {}) => ({
+  ok: true,
+  json: async () => ({ payload: { blackbirdSearchRoute: {
+    results, page_count: 1, logged_in: true, protected_org_logins: [], errors: [], ...overrides
+  } } })
 });
 
 function providerContext(fetch) {
@@ -27,27 +33,40 @@ for (const [sortOrder, expected] of [
   test(`provider combines, deduplicates and sorts queries: ${sortOrder || "default"}`, async () => {
     const requests = [];
     const pages = [
-      [pr(1, "Zulu", "03"), pr(3, "alpha 2", "01"), { html_url: "issue" }],
+      [pr(1, "Zulu", "03"), pr(3, "<em>alpha</em> 2", "01"), { number: 5 }],
       [pr(4, "Alpha 10", "04"), pr(2, "Alpha 2", "01"), pr(1, "Zulu", "03")]
     ];
-    const context = providerContext(async url => {
-      if (url.endsWith("/user")) return { ok: true, json: async () => ({ login: "martin" }) };
+    const context = providerContext(async (url, options) => {
+      assert.equal(options.credentials, "include");
       requests.push(new URL(url));
-      return { ok: true, json: async () => ({ items: pages.shift() }) };
+      return search(pages.shift());
     });
     const provider = context.window.LiveTabGroupsProviders["github-prs"];
     const urls = await provider.fetchUrls({
-      token: "test", queries: ["author:@me", "", "review-requested:@me"], sortOrder
+      queries: ["author:@me", "", "review-requested:@me"], sortOrder
     });
     assert.deepEqual(Array.from(urls), expected.map(prUrl));
     assert.equal(requests.length, 2);
-    assert.equal(requests[0].searchParams.get("q"), "author:martin");
+    assert.equal(requests[0].searchParams.get("q"), "author:@me");
     for (const request of requests) {
-      assert.equal(request.searchParams.get("sort"), sortOrder === "title" ? null : "created");
-      assert.equal(request.searchParams.get("order"), sortOrder === "title" ? null : sortOrder === "newest" ? "desc" : "asc");
+      assert.equal(request.searchParams.get("type"), "pullrequests");
+      assert.equal(request.searchParams.get("s"), sortOrder === "title" ? null : "created");
+      assert.equal(request.searchParams.get("o"), sortOrder === "title" ? null : sortOrder === "newest" ? "desc" : "asc");
     }
   });
 }
+
+test("provider reads every result page up to 100 results per query", async () => {
+  const pages = [];
+  const context = providerContext(async url => {
+    const page = Number(new URL(url).searchParams.get("p"));
+    pages.push(page);
+    return search([pr(page, "PR", "01")], { page_count: 30 });
+  });
+  const urls = await context.window.LiveTabGroupsProviders["github-prs"].fetchUrls({ queries: ["author:@me"] });
+  assert.deepEqual(pages, [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
+  assert.equal(urls.length, 10);
+});
 
 function backgroundContext(initialTabs, urls, hasGroup = true) {
   const context = providerContext();
@@ -65,7 +84,7 @@ function backgroundContext(initialTabs, urls, hasGroup = true) {
     },
     windows: { getAll: async () => [{ id: 1 }] },
     alarms: { onAlarm: event },
-    storage: { local: { get: async () => ({ cfg: { groups: { "github-prs": { token: "saved" } } } }) } },
+    storage: { local: { get: async () => ({ cfg: { groups: { "github-prs": { pollMinutes: 9 } } } }) } },
     tabGroups: {
       query: async () => hasGroup ? [{ id: 7, title: "GitHub PRs" }] : [],
       update: async () => {}
@@ -160,7 +179,7 @@ test("existing configuration gains oldest-first sorting without losing saved set
   const { context } = backgroundContext([], []);
   const cfg = await context.getCfg();
   assert.equal(cfg.groups["github-prs"].sortOrder, "oldest");
-  assert.equal(cfg.groups["github-prs"].token, "saved");
+  assert.equal(cfg.groups["github-prs"].pollMinutes, 9);
 });
 
 function manualSync(context) {
@@ -169,46 +188,46 @@ function manualSync(context) {
   });
 }
 
-test("manual sync reports a rejected token and preserves existing tabs", async () => {
-  const { context, tabs, removed } = backgroundContext([
-    { id: 1, url: prUrl(1), groupId: 7 }
-  ], []);
-  context.fetch = async () => ({ ok: false, status: 401 });
-  vm.runInContext('window.LiveTabGroupsProviders["github-prs"] = new GitHubPRProvider()', context);
-  const result = await manualSync(context);
-  assert.equal(result.success, false);
-  assert.match(result.error, /401 Bad credentials.*Replace the token/);
-  assert.equal(tabs.length, 1);
-  assert.deepEqual(removed, []);
-});
+for (const [name, response, error] of [
+  ["a signed-out session", search([], { logged_in: false }), /Not signed in to github.com/],
+  ["an expired organization SSO session", search([pr(1, "One", "01")], { protected_org_logins: ["xataio"] }),
+    /SSO session expired for xataio/],
+  ["an unknown response shape", { ok: true, json: async () => ({ payload: {} }) }, /unexpected search response/],
+  ["a search error", search([], { errors: [{ message: "Invalid query" }] }), /Invalid query/]
+]) {
+  test(`manual sync reports ${name} and preserves existing tabs`, async () => {
+    const { context, tabs, removed } = backgroundContext([{ id: 1, url: prUrl(1), groupId: 7 }], []);
+    context.fetch = async () => response;
+    vm.runInContext('window.LiveTabGroupsProviders["github-prs"] = new GitHubPRProvider()', context);
+    const result = await manualSync(context);
+    assert.equal(result.success, false);
+    assert.match(result.error, error);
+    assert.deepEqual(tabs.map(tab => tab.id), [1]);
+    assert.deepEqual(removed, []);
+  });
+}
 
 test("a failed search aborts partial results before tabs change", async () => {
   const { context, tabs, removed } = backgroundContext([
     { id: 9, url: prUrl(9), groupId: 7 }
   ], []);
   let searchCount = 0;
-  context.fetch = async url => {
-    if (url.endsWith("/user")) return { ok: true, json: async () => ({ login: "martin" }) };
-    if (++searchCount === 1) return { ok: true, json: async () => ({ items: [pr(1, "One", "01")] }) };
-    return { ok: false, status: 403, json: async () => ({ message: "API rate limit exceeded" }) };
-  };
+  context.fetch = async () => ++searchCount === 1 ? search([pr(1, "One", "01")]) : { ok: false, status: 429 };
   vm.runInContext('window.LiveTabGroupsProviders["github-prs"] = new GitHubPRProvider()', context);
   const result = await manualSync(context);
   assert.equal(result.success, false);
-  assert.match(result.error, /GitHub search failed \(403\): API rate limit exceeded/);
+  assert.match(result.error, /GitHub search failed \(429\)/);
   assert.deepEqual(tabs.map(tab => tab.id), [9]);
   assert.deepEqual(removed, []);
 });
 
-test("provider rejects missing tokens, blank queries, and network errors", async () => {
+test("provider rejects blank queries and network errors", async () => {
   const context = providerContext(async () => { throw new Error("NetworkError"); });
   const provider = context.window.LiveTabGroupsProviders["github-prs"];
-  await assert.rejects(provider.fetchUrls({}), /GitHub token is required/);
-  provider.getUsername = async () => "martin";
-  await assert.rejects(provider.fetchUrls({ token: "test", queries: [" "] }), /search query is required/);
-  await assert.rejects(provider.fetchUrls({ token: "test", queries: ["author:@me"] }), /Query "author:@me": NetworkError/);
-  context.fetch = async () => ({ ok: false, status: 502, statusText: "Bad Gateway", json: async () => { throw new Error("Invalid JSON"); } });
-  await assert.rejects(provider.fetchUrls({ token: "test", queries: ["author:@me"] }), /GitHub search failed \(502\): Bad Gateway/);
+  await assert.rejects(provider.fetchUrls({ queries: [" "] }), /search query is required/);
+  await assert.rejects(provider.fetchUrls({ queries: ["author:@me"] }), /Query "author:@me": NetworkError/);
+  context.fetch = async () => ({ ok: false, status: 502 });
+  await assert.rejects(provider.fetchUrls({ queries: ["author:@me"] }), /GitHub search failed \(502\)/);
 });
 
 test("manual sync explains empty results and disabled providers", async () => {
@@ -231,7 +250,7 @@ test("manual sync explains why empty results preserve an existing group", async 
 });
 
 for (const result of [
-  { success: false, error: "GitHub rejected the token" },
+  { success: false, error: "Not signed in to github.com in Firefox." },
   undefined,
   { success: true, message: "Synced 3 pull request(s); created 1 tab(s)." }
 ]) {
@@ -261,182 +280,19 @@ for (const result of [
   });
 }
 
-for (const sortOrder of ["oldest", "newest", "title"]) {
-  test(`multiple tokens resolve their own usernames and merge results: ${sortOrder}`, async () => {
-    const searches = [];
-    const context = providerContext(async (url, { headers }) => {
-      const token = headers.Authorization;
-      if (url.endsWith("/user")) {
-        return { ok: true, json: async () => ({ login: token === "Bearer personal" ? "martin" : "work-martin" }) };
-      }
-      searches.push([token, new URL(url).searchParams.get("q")]);
-      return { ok: true, json: async () => ({ items: token === "Bearer personal"
-        ? [pr(1, "Zulu", "03"), pr(2, "Alpha", "01")]
-        : [pr(1, "Zulu", "03"), pr(3, "Beta", "02")] }) };
-    });
-    const urls = await context.window.LiveTabGroupsProviders["github-prs"].fetchUrls({
-      sortOrder,
-      queries: ["author:@me", "review-requested:@me"],
-      tokens: ["personal", "work"]
-    });
-    assert.deepEqual(searches, [
-      ["Bearer personal", "author:martin"],
-      ["Bearer personal", "review-requested:martin"],
-      ["Bearer work", "author:work-martin"],
-      ["Bearer work", "review-requested:work-martin"]
-    ]);
-    assert.deepEqual(Array.from(urls), (sortOrder === "newest" ? [1, 3, 2] : [2, 3, 1]).map(prUrl));
-  });
-}
-
-for (const failure of ["authentication", "search"]) {
-  test(`a second token's ${failure} failure preserves tabs after the first token succeeds`, async () => {
-    const { context, tabs, removed } = backgroundContext([{ id: 9, url: prUrl(9), groupId: 7 }], []);
-    context.browser.storage.local.get = async () => ({ cfg: { groups: { "github-prs": {
-      tokens: [
-        { name: "Personal", token: "personal", queries: ["author:@me"] },
-        { name: "ClickHouse", token: "work", queries: ["author:@me"] }
-      ]
-    } } } });
-    context.fetch = async (url, { headers }) => {
-      const work = headers.Authorization === "Bearer work";
-      if (url.endsWith("/user")) {
-        return work && failure === "authentication" ? { ok: false, status: 401 }
-          : { ok: true, json: async () => ({ login: "martin" }) };
-      }
-      return work ? { ok: false, status: 403, json: async () => ({ message: "Forbidden" }) }
-        : { ok: true, json: async () => ({ items: [pr(1, "One", "01")] }) };
-    };
-    vm.runInContext('window.LiveTabGroupsProviders["github-prs"] = new GitHubPRProvider()', context);
-    const result = await manualSync(context);
-    assert.equal(result.success, false);
-    assert.match(result.error, /Token 2:/);
-    assert.deepEqual(tabs.map(tab => tab.id), [9]);
-    assert.deepEqual(removed, []);
-  });
-}
-
-test("unfinished token entries stop sync before any requests, and removing all tokens does not restore legacy credentials", async () => {
-  const context = providerContext(() => assert.fail("Invalid settings must not make API requests"));
-  const provider = context.window.LiveTabGroupsProviders["github-prs"];
-  await assert.rejects(provider.fetchUrls({ tokens: [
-    { name: "Personal", token: "personal", queries: ["author:@me"] },
-    { name: "ClickHouse", token: "", queries: ["author:@me"] }
-  ] }), /Token 2: GitHub token is required/);
-  await assert.rejects(provider.fetchUrls({ tokens: [
-    { name: "ClickHouse", token: "work", queries: [" "] }
-  ] }), /At least one GitHub search query is required/);
-  await assert.rejects(provider.fetchUrls({ token: "old", queries: ["author:@me"], tokens: [] }), /GitHub token is required/);
-});
-
 test("legacy single-query settings keep working after background defaults merge", async () => {
   const { context } = backgroundContext([], []);
   context.browser.storage.local.get = async () => ({ cfg: { groups: { "github-prs": {
-    token: "old", query: "org:example author:@me"
+    query: "org:example author:@me"
   } } } });
   const config = (await context.getCfg()).groups["github-prs"];
   assert.deepEqual(Array.from(config.queries), ["org:example author:@me"]);
   const searches = [];
-  context.fetch = async (url, { headers }) => {
-    assert.equal(headers.Authorization, "Bearer old");
-    if (url.endsWith("/user")) return { ok: true, json: async () => ({ login: "martin" }) };
+  context.fetch = async url => {
     searches.push(new URL(url).searchParams.get("q"));
-    return { ok: true, json: async () => ({ items: [] }) };
+    return search([]);
   };
   vm.runInContext('window.LiveTabGroupsProviders["github-prs"] = new GitHubPRProvider()', context);
   await context.window.LiveTabGroupsProviders["github-prs"].fetchUrls(config);
-  assert.deepEqual(searches, ["org:example author:martin"]);
+  assert.deepEqual(searches, ["org:example author:@me"]);
 });
-
-
-test("per-token queries migrate into one deduplicated list before defaults can hide them", async () => {
-  const { context } = backgroundContext([], []);
-  context.browser.storage.local.get = async () => ({ cfg: { groups: { "github-prs": {
-    tokens: [
-      { name: "Personal", token: "personal", queries: [" author:@me ", ""] },
-      { name: "Work", token: "work", queries: ["author:@me", "review-requested:@me"] }
-    ]
-  } } } });
-  const config = (await context.getCfg()).groups["github-prs"];
-  const provider = context.window.LiveTabGroupsProviders["github-prs"];
-  assert.deepEqual(Array.from(provider.getQueries(config)), ["author:@me", "review-requested:@me"]);
-  assert.deepEqual(Array.from(provider.getQueries({ tokens: [{ token: "personal" }], queries: [] })), []);
-});
-
-const inaccessibleSearch = {
-  message: "Validation Failed",
-  errors: [{ resource: "Search", field: "q", code: "invalid", message:
-    "The listed users and repositories cannot be searched either because the resources do not exist or you do not have permission to view them." }]
-};
-
-test("organization queries use the tokens that can access them regardless of token order", async () => {
-  for (const tokens of [["xata", "clickhouse"], ["clickhouse", "xata"]]) {
-    const searches = [];
-    const context = providerContext(async (url, { headers }) => {
-      if (url.endsWith("/user")) return { ok: true, json: async () => ({ login: "martin" }) };
-      const query = new URL(url).searchParams.get("q");
-      const token = headers.Authorization.slice("Bearer ".length);
-      searches.push([token, query]);
-      if (!query.includes(`org:${token}`)) {
-        return { ok: false, status: 422, json: async () => inaccessibleSearch };
-      }
-      return { ok: true, json: async () => ({ items: [pr(token === "xata" ? 1 : 2, token, "01")] }) };
-    });
-    const urls = await context.window.LiveTabGroupsProviders["github-prs"].fetchUrls({
-      tokens, queries: ["is:pr author:@me org:xata", "is:pr author:@me org:clickhouse"]
-    });
-    assert.deepEqual(Array.from(urls), [prUrl(1), prUrl(2)]);
-    assert.equal(searches.length, 4);
-  }
-});
-
-test("an inaccessible query preserves tabs even when other queries succeeded", async () => {
-  const { context, tabs, removed } = backgroundContext([{ id: 9, url: prUrl(9), groupId: 7 }], []);
-  context.browser.storage.local.get = async () => ({ cfg: { groups: { "github-prs": {
-    tokens: ["xata", "personal"], queries: ["is:pr author:@me", "is:pr org:ClickHouse"]
-  } } } });
-  context.fetch = async url => {
-    if (url.endsWith("/user")) return { ok: true, json: async () => ({ login: "martin" }) };
-    if (new URL(url).searchParams.get("q").includes("org:ClickHouse")) {
-      return { ok: false, status: 422, json: async () => inaccessibleSearch };
-    }
-    return { ok: true, json: async () => ({ items: [pr(1, "One", "01")] }) };
-  };
-  vm.runInContext('window.LiveTabGroupsProviders["github-prs"] = new GitHubPRProvider()', context);
-  const result = await manualSync(context);
-  assert.equal(result.success, false);
-  assert.match(result.error, /Token 1:/);
-  assert.match(result.error, /Token 2:/);
-  assert.match(result.error, /cannot be searched/);
-  assert.deepEqual(tabs.map(tab => tab.id), [9]);
-  assert.deepEqual(removed, []);
-});
-
-test("other 422 validation errors stop sync and include GitHub's explanation", async () => {
-  const context = providerContext(async url => url.endsWith("/user")
-    ? { ok: true, json: async () => ({ login: "martin" }) }
-    : { ok: false, status: 422, json: async () => ({ message: "Validation Failed", errors: [
-      { resource: "Search", field: "q", code: "invalid", message: "The search is longer than 256 characters." }
-    ] }) });
-  await assert.rejects(context.window.LiveTabGroupsProviders["github-prs"].fetchUrls({
-    tokens: ["test"], queries: ["is:pr author:@me"]
-  }), /Validation Failed: The search is longer than 256 characters/);
-});
-
-for (const ssoError of [
-  "Access to the requested organization (ClickHouse) is blocked by SAML single sign-on.",
-  { message: "Access to the requested organization (ClickHouse) is blocked by SAML single sign-on." }
-]) {
-  test(`an organization SSO rejection tries the next token: ${typeof ssoError}`, async () => {
-    const context = providerContext(async (url, { headers }) => {
-      if (url.endsWith("/user")) return { ok: true, json: async () => ({ login: "martin" }) };
-      return headers.Authorization === "Bearer xata"
-        ? { ok: false, status: 422, json: async () => ({ message: "Validation Failed", errors: [ssoError] }) }
-        : { ok: true, json: async () => ({ items: [pr(1, "One", "01")] }) };
-    });
-    const urls = await context.window.LiveTabGroupsProviders["github-prs"].fetchUrls({
-      tokens: ["xata", "clickhouse"], queries: ["is:pr org:ClickHouse author:@me"]
-    });
-    assert.deepEqual(Array.from(urls), [prUrl(1)]);
-  });
-}

@@ -40,11 +40,13 @@ Providers are loaded in `manifest.json` under `background.scripts` before
 
 `providers/github-prs.js`
 
-- Uses the GitHub Search API to find PRs based on queries
-- Runs the shared queries with every token and resolves `@me` to that
-  token's username
-- Accepts legacy `token` and `query`/`queries` settings until the options page
-  saves them
+- Finds PRs with the JSON response of the github.com search page, using the
+  Firefox sign-in cookies instead of an access token. The response is not a
+  documented API.
+- Stops sync without changing tabs when the user is not signed in, when an
+  organization's SSO session has expired (`protected_org_logins`), or when the
+  response shape is unknown
+- Accepts the legacy `query` setting until the options page saves `queries`
 - Combines results from multiple queries with deduplication
 - Normalizes PR URLs by stripping sub-paths such as `/files`, `/commits`, and
   `/checks` so tabs remain stable while navigating within a PR
@@ -52,7 +54,7 @@ Providers are loaded in `manifest.json` under `background.scripts` before
 `options.js` and `options.html`
 
 - Provide the configuration UI
-- Save per-provider settings such as enablement, tokens and shared queries,
+- Save per-provider settings such as enablement, queries,
   group title, group color, poll interval, and close-missing behavior
 - Recreate alarms when settings are saved
 - Expose a "Sync Now" button that sends a message to the background script
@@ -66,7 +68,6 @@ Configuration is stored in `browser.storage.local` under `cfg`:
   groups: {
     "github-prs": {
       enabled: true,
-      tokens: ["github_pat_..."],
       queries: ["is:pr is:open review-requested:@me"],
       groupTitle: "GitHub PRs",
       groupColor: "blue",
