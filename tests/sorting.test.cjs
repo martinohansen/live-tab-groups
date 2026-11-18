@@ -42,7 +42,7 @@ for (const [sortOrder, expected] of [
       return search(pages.shift());
     });
     const provider = context.window.LiveTabGroupsProviders["github-prs"];
-    const urls = await provider.fetchUrls({
+    const { urls } = await provider.fetchUrls({
       queries: ["author:@me", "", "review-requested:@me"], sortOrder
     });
     assert.deepEqual(Array.from(urls), expected.map(prUrl));
@@ -63,7 +63,7 @@ test("provider reads every result page up to 100 results per query", async () =>
     pages.push(page);
     return search([pr(page, "PR", "01")], { page_count: 30 });
   });
-  const urls = await context.window.LiveTabGroupsProviders["github-prs"].fetchUrls({ queries: ["author:@me"] });
+  const { urls } = await context.window.LiveTabGroupsProviders["github-prs"].fetchUrls({ queries: ["author:@me"] });
   assert.deepEqual(pages, [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
   assert.equal(urls.length, 10);
 });
@@ -190,8 +190,6 @@ function manualSync(context) {
 
 for (const [name, response, error] of [
   ["a signed-out session", search([], { logged_in: false }), /Not signed in to github.com/],
-  ["an expired organization SSO session", search([pr(1, "One", "01")], { protected_org_logins: ["xataio"] }),
-    /SSO session expired for xataio/],
   ["an unknown response shape", { ok: true, json: async () => ({ payload: {} }) }, /unexpected search response/],
   ["a search error", search([], { errors: [{ message: "Invalid query" }] }), /Invalid query/]
 ]) {
@@ -206,6 +204,21 @@ for (const [name, response, error] of [
     assert.deepEqual(removed, []);
   });
 }
+
+test("an expired organization SSO session skips that organization and keeps its tabs", async () => {
+  const xataUrl = "https://github.com/xataio/app/pull/5";
+  const { context, tabs, removed } = backgroundContext([
+    { id: 5, url: `${xataUrl}/files`, groupId: 7 },
+    { id: 9, url: prUrl(9), groupId: 7 }
+  ], []);
+  context.fetch = async () => search([pr(1, "One", "01")], { protected_org_logins: ["XataIO"] });
+  vm.runInContext('window.LiveTabGroupsProviders["github-prs"] = new GitHubPRProvider()', context);
+  const result = await manualSync(context);
+  assert.equal(result.success, true);
+  assert.match(result.message, /Synced 1 pull request.*Skipped xataio: SSO session expired/);
+  assert.deepEqual(removed, [9]);
+  assert.deepEqual(tabs.map(tab => tab.id).sort(), [100, 5]);
+});
 
 test("a failed search aborts partial results before tabs change", async () => {
   const { context, tabs, removed } = backgroundContext([

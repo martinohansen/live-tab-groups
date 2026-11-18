@@ -17,7 +17,10 @@ The extension uses a provider-based architecture where each data source (for
 example GitHub PRs) is implemented as a provider:
 
 - Providers register themselves in `window.LiveTabGroupsProviders`
-- `fetchUrls(config)`: Return the array of URLs to sync
+- `fetchUrls(config)`: Return the array of URLs to sync, or
+  `{ urls, retainUrl, warnings }` when some results are unknown. Sync never
+  closes tabs for which `retainUrl(url)` returns true and appends `warnings`
+  to the sync message
 - `getTabMatchPattern()`: Return the browser match pattern for tabs
 - `matchesUrl(url)`: Check whether a URL belongs to the provider
 - `normalizeUrl(url)` (optional): Normalize URLs for comparison
@@ -43,9 +46,10 @@ Providers are loaded in `manifest.json` under `background.scripts` before
 - Finds PRs with the JSON response of the github.com search page, using the
   Firefox sign-in cookies instead of an access token. The response is not a
   documented API.
-- Stops sync without changing tabs when the user is not signed in, when an
-  organization's SSO session has expired (`protected_org_logins`), or when the
+- Stops sync without changing tabs when the user is not signed in or when the
   response shape is unknown
+- Skips organizations whose SSO session has expired (`protected_org_logins`)
+  and keeps their open tabs, because the user may not sign in again soon
 - Accepts the legacy `query` setting until the options page saves `queries`
 - Combines results from multiple queries with deduplication
 - Normalizes PR URLs by stripping sub-paths such as `/files`, `/commits`, and

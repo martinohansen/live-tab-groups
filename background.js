@@ -162,7 +162,10 @@ async function syncGroup(providerId, config, windowId) {
     console.log(`[Live Tab Groups] Group ID: ${groupId ? groupId : 'null (will create)'}`);
 
     // Fetch URLs from provider
-    const urls = await provider.fetchUrls(config);
+    // Providers return either a URL list or { urls, retainUrl, warnings }.
+    // retainUrl marks tabs whose state the provider could not determine.
+    const fetched = await provider.fetchUrls(config);
+    const { urls, retainUrl = () => false, warnings = [] } = Array.isArray(fetched) ? { urls: fetched } : fetched;
     console.log(`[Live Tab Groups] Fetched ${urls.length} URLs from provider`);
 
     // SAFEGUARD: If API returns 0 results but we have existing tabs, something might be wrong
@@ -171,7 +174,7 @@ async function syncGroup(providerId, config, windowId) {
       const existingTabs = await tabsInGroup(groupId);
       if (existingTabs.length > 0) {
         console.warn(`[Live Tab Groups] ⚠️ API returned 0 URLs but group has ${existingTabs.length} tabs. Skipping sync to prevent data loss. This might indicate an API error or auth issue.`);
-        return "No pull requests matched. Existing tabs were kept for safety.";
+        return ["No pull requests matched. Existing tabs were kept for safety.", ...warnings].join(" ");
       }
     }
 
@@ -236,6 +239,7 @@ async function syncGroup(providerId, config, windowId) {
       const toClose = inGroup.filter(t => {
         if (!t.url || t.url === "about:blank") return false;
         if (activeTabIds.has(t.id)) return false; // Skip active tabs
+        if (retainUrl(t.url)) return false;
         const normalized = provider.normalizeUrl ? provider.normalizeUrl(t.url) : t.url;
         return !keepNormalized.has(normalized);
       });
@@ -272,9 +276,9 @@ async function syncGroup(providerId, config, windowId) {
     }
 
     console.log(`[Live Tab Groups] ✓ Sync completed successfully for ${providerId}`);
-    return urls.length === 0
+    return [urls.length === 0
       ? "No pull requests matched. No tabs were changed."
-      : `Synced ${urls.length} pull request(s); created ${created.length} tab(s).`;
+      : `Synced ${urls.length} pull request(s); created ${created.length} tab(s).`, ...warnings].join(" ");
   } catch (error) {
     console.error(`[Live Tab Groups] ✗ Sync failed for ${providerId}:`, error);
     throw error;

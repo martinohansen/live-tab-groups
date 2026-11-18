@@ -25,6 +25,7 @@ class GitHubPRProvider {
     const sortOrder = config.sortOrder || "oldest";
     const sort = sortOrder === "title" ? "" : `&s=created&o=${sortOrder === "newest" ? "desc" : "asc"}`;
     const allPRs = new Map();
+    const ssoBlockedOrgs = new Set();
 
     for (const query of queries) {
       for (let page = 1; page <= maxPages; page++) {
@@ -46,11 +47,9 @@ class GitHubPRProvider {
           throw new Error("Not signed in to github.com in Firefox. Sign in and sync again.");
         }
         // GitHub leaves out results from organizations whose SSO session has
-        // expired and lists those organizations here.
-        if (search.protected_org_logins?.length) {
-          throw new Error(`Query "${query}": SSO session expired for ${search.protected_org_logins.join(", ")}. `
-            + "Open github.com, authenticate with the organization, and sync again.");
-        }
+        // expired and lists those organizations here. Sync continues because
+        // nobody may sign in for a long time.
+        search.protected_org_logins?.forEach(org => ssoBlockedOrgs.add(org.toLowerCase()));
         if (search.errors?.length) {
           throw new Error(`Query "${query}": ${search.errors.map(error => error.message || error).join("; ")}`);
         }
@@ -80,7 +79,13 @@ class GitHubPRProvider {
     });
 
     console.log(`[${this.id}] ✓ Total unique PRs found: ${allPRs.size}`);
-    return prs.map(pr => pr.html_url);
+    const blocked = [...ssoBlockedOrgs];
+    return {
+      urls: prs.map(pr => pr.html_url),
+      // Results from SSO-blocked organizations are unknown, so their tabs must stay open.
+      retainUrl: url => blocked.some(org => url.toLowerCase().startsWith(`https://github.com/${org}/`)),
+      warnings: blocked.length ? [`Skipped ${blocked.join(", ")}: SSO session expired. Its tabs were kept.`] : []
+    };
   }
 
   // Match pattern for tabs that could belong to this group
